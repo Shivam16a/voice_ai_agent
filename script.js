@@ -1,4 +1,4 @@
-const API_KEY = "AIzaSyDKY_U4mAIK_OgUwuTPirNjGjGxQDJbhqA";
+const API_KEY = "AIzaSyBNUYPbF051_GrDCvzcfHGDCpJo-KVLs0I";
 const WAKE_WORD = "shivam";
 let chatHistory = [];
 
