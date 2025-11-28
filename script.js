@@ -177,6 +177,7 @@ function speak(text) {
     msg.lang = "hi-IN";
     msg.rate = 1;
     msg.pitch = 1;
+    msg.volume = 1;
 
     const maleVoice = getMaleHindiVoice();
     if (maleVoice) msg.voice = maleVoice;
