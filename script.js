@@ -2,11 +2,17 @@ const API_KEY = "AIzaSyDKY_U4mAIK_OgUwuTPirNjGjGxQDJbhqA";
 const WAKE_WORD = "shivam";
 let chatHistory = [];
 
+// ---------------- Speech Recognition ---------------- //
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const recognition = new SpeechRecognition();
 recognition.lang = "hi-IN";
 recognition.interimResults = false;
 
+let listening = false;
+let stopped = false;
+let voicesLoaded = false;
+
+// ---------------- HTML Elements ---------------- //
 const listenBtn = document.getElementById("listenBtn");
 const stopBtn = document.getElementById("stopBtn");
 const autoToggle = document.getElementById("autoToggle");
@@ -16,10 +22,7 @@ const micPulse = document.getElementById("micPulse");
 const showHistoryBtn = document.getElementById("showHistory");
 const clearHistoryBtn = document.getElementById("clearHistory");
 
-let listening = false;
-let stopped = false;
-
-/* -------------------- Load Previous History -------------------- */
+// -------------- Load Old History ----------------- //
 window.onload = () => {
     const saved = localStorage.getItem("shivamAI_history");
     if (saved) {
@@ -28,10 +31,10 @@ window.onload = () => {
     }
 };
 
-/* ------------------------ Buttons ------------------------- */
+// -------------------- Buttons -------------------- //
 listenBtn.onclick = () => {
-    window.speechSynthesis.cancel(); // fix speech lock
-    window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); // unlock
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
     stopped = false;
     startMic();
 };
@@ -47,43 +50,41 @@ stopBtn.onclick = () => {
 showHistoryBtn.onclick = () => {
     console.clear();
     console.log("🔹 Chat History 🔹");
-    chatHistory.forEach((msg, index) => {
-        console.log(`${index + 1}. [${msg.time}] ${msg.type.toUpperCase()}: ${msg.text}`);
-    });
+    chatHistory.forEach((msg, i) => 
+        console.log(`${i + 1}. [${msg.time}] ${msg.type.toUpperCase()}: ${msg.text}`)
+    );
 };
 
-/* ---------------------- Clear History ---------------------- */
 clearHistoryBtn.onclick = () => {
     if (confirm("Kya aap sach me pura chat history delete karna chahte hain?")) {
-
         localStorage.removeItem("shivamAI_history");
         chatHistory = [];
         chatBox.innerHTML = "";
-
         console.clear();
-        console.log("Chat history deleted!");
-
         alert("Chat history delete ho gayi!");
     }
 };
 
-/* ------------------------ Start Mic ------------------------ */
+// -------------------- Mic Start ------------------- //
 function startMic() {
     if (stopped) return;
+    if (listening) return; // FIX: double start block
+
     listening = true;
     recognition.start();
     micPulse.style.display = "block";
     statusEl.textContent = "Listening...";
 }
 
-/* ------------------- Speech Recognition -------------------- */
+// ---------------- Speech Recognition Events ---------------- //
 recognition.onresult = async (event) => {
     if (stopped) return;
 
     const text = event.results[0][0].transcript.toLowerCase();
     addMsg(text, "user");
 
-    if (!text.includes(WAKE_WORD) && autoToggle.checked) {
+    // Wake word required ONLY in auto-mode
+    if (autoToggle.checked && !text.includes(WAKE_WORD)) {
         statusEl.textContent = `Say wake word: "${WAKE_WORD}"...`;
         setTimeout(() => startMic(), 800);
         return;
@@ -95,6 +96,7 @@ recognition.onresult = async (event) => {
     addMsg(response, "ai");
     speak(response);
 
+    // Auto re-listen
     if (autoToggle.checked && !stopped) {
         setTimeout(() => startMic(), 1200);
     } else {
@@ -102,13 +104,24 @@ recognition.onresult = async (event) => {
     }
 };
 
-/* ---------------------- AI Function ------------------------ */
+recognition.onend = () => {
+    listening = false;
+    micPulse.style.display = "none";
+
+    if (autoToggle.checked && !stopped) {
+        startMic();
+    }
+};
+
+// ------------------ AI Function ------------------- //
 async function askAI(msg) {
 
+    // Manual quick responses
     if (msg.includes("डेट") || msg.includes("date")) {
         return `आज का डेट: ${getHindiDate()}`;
-    }else if(msg.includes("kisne banaya tumko")){
-        return "mai ek ai agent hu mujhe shivam sir ne banaya hai";
+    }
+    if (msg.includes("kisne banaya tumko")) {
+        return "मैं एक AI एजेंट हूँ और मुझे शिवम सर ने बनाया है।";
     }
 
     const body = {
@@ -116,7 +129,7 @@ async function askAI(msg) {
             {
                 parts: [
                     {
-                        text: `You are Shivam AI, a friendly male assistant speaking in Hindi. User: ${msg}`
+                        text: `You are Shivam AI, a friendly male Hindi assistant. User: ${msg}`
                     }
                 ]
             }
@@ -129,20 +142,29 @@ async function askAI(msg) {
             {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
+                body: JSON.stringify(body)
             }
         );
 
         const data = await res.json();
-        return data.candidates?.[0]?.content?.parts?.[0]?.text ||
-            "मुझे समझ नहीं आया। कृपया दोबारा कहें।";
+
+        if (!data.candidates) {
+            return "API से डेटा नहीं मिल पाया। कृपया API key चेक करें।";
+        }
+
+        return (
+            data.candidates?.[0]?.content?.parts?.[0]?.text ||
+            data.candidates?.[0]?.content?.[0]?.text ||
+            "मुझे समझ नहीं आया।"
+        );
+
     } catch (err) {
         console.error(err);
         return "सर्वर से जवाब नहीं मिल सका।";
     }
 }
 
-/* -------------------- Add Message to UI -------------------- */
+// ------------------ Add Message ------------------- //
 function addMsg(text, type) {
     const div = document.createElement("div");
     div.classList.add("message", type);
@@ -151,10 +173,14 @@ function addMsg(text, type) {
     chatBox.scrollTop = chatBox.scrollHeight;
 
     chatHistory.push({ type, text, time: new Date().toLocaleTimeString() });
+
+    // Fix: prevent LocalStorage overflow
+    if (chatHistory.length > 200) chatHistory.shift();
+
     localStorage.setItem("shivamAI_history", JSON.stringify(chatHistory));
 }
 
-/* ---------------------- Hindi Male Voice ------------------- */
+// ------------------- Male Voice -------------------- //
 function getMaleHindiVoice() {
     const voices = window.speechSynthesis.getVoices();
     return (
@@ -167,11 +193,12 @@ function getMaleHindiVoice() {
     );
 }
 
-/* ---------------------- Speak Function --------------------- */
+// -------------------- Speak ------------------------ //
 function speak(text) {
-    window.speechSynthesis.cancel(); // fix freeze
+    window.speechSynthesis.cancel();
 
-    const cleanText = text.replace(/[\u{1F600}-\u{1F64F}|\u{2700}-\u{27BF}|\u{E000}-\u{F8FF}|\*]/gu, '');
+    // Clean emojis safely
+    const cleanText = text.replace(/[^\p{L}\p{N}\p{Z}\p{P}]/gu, "");
 
     const msg = new SpeechSynthesisUtterance(cleanText);
     msg.lang = "hi-IN";
@@ -184,20 +211,18 @@ function speak(text) {
     window.speechSynthesis.speak(msg);
 }
 
-/* -------------------- Hindi Date Function ------------------ */
+// ---------------- Hindi Date ------------------------ //
 function getHindiDate() {
-    const today = new Date();
-    const options = {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    };
-    return today.toLocaleDateString('hi-IN', options);
+    return new Date().toLocaleDateString("hi-IN", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+    });
 }
 
-/* --------------------- Preload Voices ---------------------- */
+// ---------------- Preload Voices -------------------- //
 window.speechSynthesis.onvoiceschanged = () => {
-    console.log("Voices loaded");
+    voicesLoaded = true;
     window.speechSynthesis.getVoices();
 };
