@@ -171,7 +171,7 @@ function getMaleHindiVoice() {
 function speak(text) {
     window.speechSynthesis.cancel(); // fix freeze
 
-    const cleanText = text.replace(/[\u{1F600}-\u{1F64F}|\u{2700}-\u{27BF}|\u{E000}-\u{F8FF}|\*]/gu, '');
+    const cleanText = text.replace(/[^\p{L}\p{N}\p{Z}\p{P}]/gu, '');
 
     const msg = new SpeechSynthesisUtterance(cleanText);
     msg.lang = "hi-IN";
